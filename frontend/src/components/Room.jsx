@@ -107,7 +107,14 @@ const Room = () => {
       auth: {
         userId: user.userId,
         username: user.username
-      }
+      },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      forceNew: true
     });
 
     socketRef.current = socket;
@@ -123,6 +130,48 @@ const Room = () => {
 
     socket.on('connect_error', (error) => {
       console.error('Socket connection error:', error);
+      toast({
+        title: 'Connection Error',
+        description: 'Unable to connect to the server. Please check your internet connection.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('Attempting to reconnect:', attemptNumber);
+    });
+
+    socket.on('reconnect_error', (error) => {
+      console.error('Reconnection error:', error);
+    });
+
+    socket.on('reconnect_failed', () => {
+      console.error('Failed to reconnect to server');
+      toast({
+        title: 'Connection Failed',
+        description: 'Unable to establish connection with the server. Please refresh the page.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    });
+
+    socket.on('reconnect', () => {
+      console.log('Reconnected successfully');
+      // Rejoin the room after reconnection
+      if (id) {
+        console.log('Rejoining room:', id);
+        socket.emit('join-room', id);
+      }
+      toast({
+        title: 'Reconnected',
+        description: 'Successfully reconnected to the server',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
     });
 
     socket.on('user-joined', ({ userId, username }) => {
@@ -192,10 +241,21 @@ const Room = () => {
 
     socket.on('error', (error) => {
       console.error('Socket error:', error);
+      toast({
+        title: 'Connection Error',
+        description: 'An error occurred with the connection',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
     });
 
-    socket.on('disconnect', () => {
-      console.log('Socket disconnected');
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      if (reason === 'io server disconnect') {
+        // Server initiated disconnect, try to reconnect
+        socket.connect();
+      }
     });
 
     return () => {
