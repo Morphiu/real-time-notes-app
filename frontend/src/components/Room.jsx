@@ -79,22 +79,30 @@ const Room = () => {
 
   useEffect(() => {
     fetchRoom();
-    if (user) {
+  }, [id]);
+
+  useEffect(() => {
+    if (user && user.userId && user.username) {
+      console.log('Setting up socket connection with user:', user);
       setupSocket();
+    } else {
+      console.log('No valid user data available for socket setup:', user);
     }
     return () => {
       if (socketRef.current) {
+        console.log('Cleaning up socket connection');
         socketRef.current.disconnect();
       }
     };
-  }, [id, user]);
+  }, [user]);
 
   const setupSocket = () => {
-    if (!user || !user.userId) {
-      console.log('No user data available for socket setup');
+    if (!user || !user.userId || !user.username) {
+      console.log('No valid user data available for socket setup');
       return;
     }
 
+    console.log('Setting up socket connection...');
     const socket = io(apiURL, {
       auth: {
         userId: user.userId,
@@ -105,15 +113,22 @@ const Room = () => {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('Socket connected');
-      if (room) {
-        socket.emit('join-room', room._id);
+      console.log('Socket connected successfully');
+      // Join the room immediately after connection
+      if (id) {
+        console.log('Joining room:', id);
+        socket.emit('join-room', id);
       }
     });
 
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+    });
+
     socket.on('user-joined', ({ userId, username }) => {
-      console.log('User joined:', { userId, username });
+      console.log('User joined event received:', { userId, username, currentUserId: user.userId });
       if (userId !== user.userId) {
+        console.log('Showing join notification for:', username);
         toast({
           title: 'New Member Joined',
           description: `${username} has joined the room`,
@@ -125,8 +140,9 @@ const Room = () => {
     });
 
     socket.on('user-left', ({ userId, username }) => {
-      console.log('User left:', { userId, username });
+      console.log('User left event received:', { userId, username, currentUserId: user.userId });
       if (userId !== user.userId) {
+        console.log('Showing leave notification for:', username);
         toast({
           title: 'Member Left',
           description: `${username} has left the room`,
@@ -138,7 +154,7 @@ const Room = () => {
     });
 
     socket.on('note-updated', (data) => {
-      console.log('Note updated:', data);
+      console.log('Note updated event received:', data);
       setRoom(prevRoom => ({
         ...prevRoom,
         notes: prevRoom.notes.map(note =>
@@ -148,7 +164,7 @@ const Room = () => {
     });
 
     socket.on('note-deleted', ({ noteId }) => {
-      console.log('Note deleted:', noteId);
+      console.log('Note deleted event received:', noteId);
       setRoom(prevRoom => ({
         ...prevRoom,
         notes: prevRoom.notes.filter(note => note._id !== noteId)
@@ -163,7 +179,7 @@ const Room = () => {
     });
 
     socket.on('room-deleted', ({ roomId }) => {
-      console.log('Room deleted:', roomId);
+      console.log('Room deleted event received:', roomId);
       toast({
         title: 'Room Deleted',
         description: 'This room has been deleted',
@@ -171,7 +187,7 @@ const Room = () => {
         duration: 5000,
         isClosable: true,
       });
-      navigate('/');
+      navigate('/rooms');
     });
 
     socket.on('error', (error) => {
@@ -183,6 +199,7 @@ const Room = () => {
     });
 
     return () => {
+      console.log('Cleaning up socket connection');
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
